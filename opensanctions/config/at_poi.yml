@@ -1,0 +1,28 @@
+name: at_poi
+description: "[OSANC] Person of Interest Austria"
+schedule: daily
+pipeline:
+  init:
+    method: seed
+    params:
+      url: 'https://www.meineabgeordneten.at/Abgeordnete'
+    handle:
+      pass: fetch
+  fetch:
+    method: fetch
+    handle:
+      pass: index
+  index:
+    method: opensanctions.crawlers.at_poi:index
+    params:
+      sampling_rate: 0.01
+    handle:
+      pass: parse
+  parse:
+    method: opensanctions.crawlers.at_poi:parse
+    params:
+      sampling_rate: 0.01
+  debug:
+      method: debug
+#aggregator:
+ # method: opensanctions.graph_dossier:ftm_load_dossier
