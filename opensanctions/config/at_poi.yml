@@ -17,12 +17,15 @@ pipeline:
     params:
       sampling_rate: 0.01
     handle:
+      pass: fetch_representative
+  fetch_representative:
+    method: fetch
+    handle:
       pass: parse
   parse:
     method: opensanctions.crawlers.at_poi:parse
-    params:
-      sampling_rate: 0.01
   debug:
       method: debug
+#TODO: what does the aleph method send?
 #aggregator:
  # method: opensanctions.graph_dossier:ftm_load_dossier
