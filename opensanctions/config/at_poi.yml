@@ -26,6 +26,5 @@ pipeline:
     method: opensanctions.crawlers.at_poi:parse
   debug:
       method: debug
-#TODO: what does the aleph method send?
-#aggregator:
- # method: opensanctions.graph_dossier:ftm_load_dossier
+aggregator:
+  method: opensanctions.graph_dossier:ftm_load_dossier
