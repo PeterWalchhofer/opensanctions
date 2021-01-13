@@ -75,7 +75,7 @@ def parse_date(context, raw_date):
 
 
 def parse_party(context, data, emitter, html):
-    if data["party"] not in ["..."]:
+    if data["party"] not in ["...", "parteilos"]:
         party = emitter.make("Organization")
 
         party_name = get_itemprop(context, html, "memberOf")
@@ -108,6 +108,9 @@ def parse_time_span(raw_time_span):
     elif "-" in raw_time_span:
         arr = raw_time_span.split("-")
         return match_date_format(arr[0]), match_date_format(arr[1])
+    else:
+        print("COUlD NOT PARSE TIME SPAN: " + raw_time_span)
+        return None, None
 
 
 def extract_county_name(description, prefix):
@@ -126,34 +129,41 @@ def mandate_description_to_membership(person, context, description, startDate, e
     membership.add("endDate", endDate)
     description_lower = description.lower()
 
-    if re.match("abgeordneter? zum nationalrat", description_lower) \
+    if re.match(r"abgeordneter? zum nationalrat", description_lower) \
             and not "ersatzabgeordneter" in description_lower:
         name = "Nationalrat"
         organization.add("name", name)
         organization.add("alias", "National Council")
 
-        createOrgaAndMemb(emitter, context, organization, person, name, membership)
+        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
 
-    elif re.match("abgeordneter?\szum\s?[^ ]*\slandtag", description_lower) \
+    elif re.match(r"bundesminister[in]?\sfür", description_lower):
+        name = "Bundesregierung"
+        organization.add("name", name)
+        organization.add("alias", ["Government of Austria", "Austrian Federal Government"])
+
+        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
+
+    elif re.match(r"abgeordneter?\szum\s?[^ ]*\slandtag", description_lower) \
             and "ersatzabgeordneter" not in description_lower:
         name = extract_county_name(description_lower, "Landtag")
         if not name: return
         organization.add("name", name)
-        createOrgaAndMemb(emitter, context, organization, person, name, membership)
+        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
 
-    elif "mitglied des bundesrates" in description_lower and\
-        "ersatzmitglied" not in description_lower:
+    elif "mitglied des bundesrates" in description_lower and \
+            "ersatzmitglied" not in description_lower:
         name = "Bundesrat"
         organization.add("name", name)
         organization.add("alias", "Federal Council")
 
-        createOrgaAndMemb(emitter, context, organization, person, name, membership)
+        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
 
     elif "volksanwalt" in description_lower \
             or "volksanwältin" in description_lower:
         name = "Volksanwaltschaft"
         organization.add("name", name)
-        createOrgaAndMemb(emitter, context, organization, person, name, membership)
+        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
 
     elif "ööab" in description_lower:
         pass
@@ -164,7 +174,7 @@ def mandate_description_to_membership(person, context, description, startDate, e
         organization.add("name", name)
         membership.add("description", description)
         membership.add("summary", "Landesrat")
-        createOrgaAndMemb(emitter, context, organization, person, name, membership)
+        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
 
     elif "bürgermeister" in description_lower:
         pass  # "von hall in tirol"
@@ -177,7 +187,7 @@ def mandate_description_to_membership(person, context, description, startDate, e
             membership.add("summary", "Landeshauptmann Stellvertreter")
         else:
             membership.add("summary", "Landeshauptmann")
-        createOrgaAndMemb(emitter, context, organization, person, name, membership)
+        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
 
     elif "präsident" in description_lower:
         # Präsidentin des Landtages von Steiermark, SPÖ
@@ -185,7 +195,7 @@ def mandate_description_to_membership(person, context, description, startDate, e
         pass
 
 
-def createOrgaAndMemb(emitter, context, organization, person, org_name, membership):
+def createOrgaAndMemb(emitter, context, organization, person, org_name, membership, description):
     organization.add("country", "at")
     organization.make_id("meineabgeordneten.at", org_name)
     pprint(organization.to_dict())
@@ -193,6 +203,7 @@ def createOrgaAndMemb(emitter, context, organization, person, org_name, membersh
 
     membership.add("member", person.id)
     membership.add("organization", organization.id)
+    membership.add("description", description)
     membership.make_id(organization.id, person.id)
     pprint(membership.to_dict())
 
@@ -272,8 +283,11 @@ def parse(context, data):
     person.add("title", title)
     person.add("firstName", firstName)
     person.add("lastName", familyName)
+    person.add("name", " ".join([firstName, familyName]))
     person.add("birthDate", birthDate)
     person.add("birthPlace", birthPlace)
+    person.add("country", "at")
+
     parse_social_media(html, person, context)
     parse_addresses(context, html, person)
     person.add("phone", telephone)
@@ -296,6 +310,7 @@ def parse(context, data):
     membership.add("sourceUrl", url)
     emitter.emit(membership)
     pprint(person.to_dict())
+    emitter.emit(person)
     emitter.finalize()
 
 

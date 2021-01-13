@@ -27,4 +27,6 @@ pipeline:
   debug:
       method: debug
 aggregator:
-  method: opensanctions.graph_dossier:ftm_load_dossier
+  method: ftm_load_aleph
+#aggregator:
+ # method: opensanctions.graph_dossier:ftm_load_dossier
