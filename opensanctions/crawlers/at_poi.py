@@ -4,7 +4,7 @@ from normality import collapse_spaces
 from datetime import datetime
 import re
 
-counties = ["niederösterreich", "oberösterreich", "burgenland", "tirol", "vorarlberg", "wien", "salzburg", "kärnten",
+states = ["niederösterreich", "oberösterreich", "burgenland", "tirol", "vorarlberg", "wien", "salzburg", "kärnten",
             "steiermark"]
 months = {"Januar": 1, "Februar": 2, "März": 3, "April": 4, "Mai": 5, "Juni": 6, "Juli": 7,
           "August": 8, "September": 9, "Oktober": 10, "November": 11, "Dezember": 12}
@@ -55,7 +55,7 @@ def get_img_src(context, html):
         context.log.info("No image found.")
 
 
-def parse_date(context, raw_date):
+def parse_date(raw_date):
     try:
         if not raw_date:
             return
@@ -82,6 +82,7 @@ def parse_party(context, data, emitter, html):
         party.add("name", party_name)
         party.add("sourceUrl", "https://meineabgeordneten.at")
         party.add("topics", "pol.party")
+        # Abbreviation
         party.add("alias", data["party"])
         party.add("country", "at")
         party.make_id("meineabgeordneten.at", party_name)
@@ -98,63 +99,60 @@ def match_date_format(date):
         date = match.group(1)
         return datetime.strptime(date, "%Y").isoformat()
     if "?" in date:
+        # meinabgeordneten uses "?" as null-variable
         return None
 
 
-def parse_time_span(raw_time_span):
+def convert_time_span(raw_time_span):
     raw_time_span = collapse_spaces(raw_time_span)  # TODO
     if "seit" in raw_time_span.lower():
         return match_date_format(raw_time_span), None
     elif "-" in raw_time_span:
         arr = raw_time_span.split("-")
         return match_date_format(arr[0]), match_date_format(arr[1])
-    else:
-        print("COUlD NOT PARSE TIME SPAN: " + raw_time_span)
-        return None, None
 
 
-def extract_county_name(description, prefix):
-    match = re.search("(" + "|".join(counties) + ")", description)
-    if not match: return
-    print("COUNTY EXTRACTED: " + match.group(1).title())
+def extract_state_name(description, prefix):
+    match = re.search("(" + "|".join(states) + ")", description)
+    if not match:
+        return
     return prefix + " " + match.group(1).title()
 
 
-def mandate_description_to_membership(person, context, description, startDate, endDate, emitter):
+def mandate_description_to_membership(person, context, description, description_sub, startDate, endDate, emitter, org_website):
     # Information provided is not very well machine readable, but standardized in natural text.
     # Due to the rich information, some natural text processing is being done
     organization = emitter.make("Organization")
+    organization.add("website", org_website)
+    organization.add("country", "at")
     membership = emitter.make("Membership")
     membership.add("startDate", startDate)
     membership.add("endDate", endDate)
+    description = " ".join([description, description_sub])  # separation not needed here
     description_lower = description.lower()
 
     if re.match(r"abgeordneter? zum nationalrat", description_lower) \
             and not "ersatzabgeordneter" in description_lower:
         name = "Nationalrat"
-        organization.add("name", name)
         organization.add("alias", "National Council")
 
         createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
 
     elif re.match(r"bundesminister[in]?\sfür", description_lower):
         name = "Bundesregierung"
-        organization.add("name", name)
         organization.add("alias", ["Government of Austria", "Austrian Federal Government"])
-
         createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
 
     elif re.match(r"abgeordneter?\szum\s?[^ ]*\slandtag", description_lower) \
             and "ersatzabgeordneter" not in description_lower:
-        name = extract_county_name(description_lower, "Landtag")
-        if not name: return
-        organization.add("name", name)
+        name = extract_state_name(description_lower, "Landtag")
+        if not name:
+            return
         createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
 
     elif "mitglied des bundesrates" in description_lower and \
             "ersatzmitglied" not in description_lower:
         name = "Bundesrat"
-        organization.add("name", name)
         organization.add("alias", "Federal Council")
 
         createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
@@ -162,16 +160,15 @@ def mandate_description_to_membership(person, context, description, startDate, e
     elif "volksanwalt" in description_lower \
             or "volksanwältin" in description_lower:
         name = "Volksanwaltschaft"
-        organization.add("name", name)
         createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
 
     elif "ööab" in description_lower:
         pass
 
     elif "landesrat" in description_lower or "landesrätin" in description_lower:
-        name = extract_county_name(description_lower, "Landesregierung")
-        if not name: return
-        organization.add("name", name)
+        name = extract_state_name(description_lower, "Landesregierung")
+        if not name:
+            return
         membership.add("description", description)
         membership.add("summary", "Landesrat")
         createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
@@ -180,8 +177,9 @@ def mandate_description_to_membership(person, context, description, startDate, e
         pass  # "von hall in tirol"
 
     elif "landeshauptmann" in description_lower:
-        name = extract_county_name(description_lower, "Landesregierung")
-        if not name: return
+        name = extract_state_name(description_lower, "Landesregierung")
+        if not name:
+            return
         organization.add("name", name)
         if "stellvertreter" in description_lower:
             membership.add("summary", "Landeshauptmann Stellvertreter")
@@ -189,14 +187,9 @@ def mandate_description_to_membership(person, context, description, startDate, e
             membership.add("summary", "Landeshauptmann")
         createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
 
-    elif "präsident" in description_lower:
-        # Präsidentin des Landtages von Steiermark, SPÖ
-        # achtung: Vizepräsident des Bundesrates
-        pass
-
 
 def createOrgaAndMemb(emitter, context, organization, person, org_name, membership, description):
-    organization.add("country", "at")
+    organization.add("name", org_name)
     organization.make_id("meineabgeordneten.at", org_name)
     pprint(organization.to_dict())
     emitter.emit(organization)
@@ -211,42 +204,32 @@ def createOrgaAndMemb(emitter, context, organization, person, org_name, membersh
     emitter.emit(membership)
 
 
-def parse_mandates(emitter, context, person, html):
+def parse_info_table(emitter, context, person, html, parser, div_id):
     summary = []
     descs = []
 
-    mandate_div = html.find(".//div[@id='mandate']")
+    mandate_div = html.find(".//div[@id='{}']".format(div_id))
     if mandate_div is None:
         context.log.warning("No 'mandate' field found")
         return
-    # complex match due to duplicated fields for wide screen and mobile
+
+    # complex match due to duplicated fields in DOM (displayed according to window size)
     for row in mandate_div.xpath(".//div[contains(@class,'funktionszeile') and contains(@class,'d-lg-none')]"):
-        raw_time_span = row.xpath(".//span[@class='aktiv']")
-        active = len(raw_time_span)
-        if not active:
-            raw_time_span = row.xpath(".//span[@class='inaktiv']")
+        active, raw_time_span = parse_time_span(row)
 
         if not len(raw_time_span):
+            # this should not happen -> go to next iteration
             context.log.error("Did not find time span in mandates field")
-            return
-        startDate, endDate = parse_time_span(raw_time_span[0].text)
+            continue
+
+        startDate, endDate = convert_time_span(raw_time_span[0].text) or (None, None)
         context.log.info("PARSED TIMESPAN: from " + (startDate or "none") + " to " + (endDate or "none"))
 
-        description_sub_el = row.xpath(".//span[@class='bold']")
-        if not len(description_sub_el):
-            context.log.error("Did not find description in mandates field")
-            return
+        description, description_sub, href = extract_description(context, row) or (None, None)
+        if not description:
+            continue
 
-        # sometimes text is wrapped inside <a ... />
-        desc_parent = description_sub_el[0].getparent()
-        if desc_parent.tag == "a":
-            link = desc_parent.get("href")
-            desc_parent = desc_parent.getparent()
-
-        description = collapse_spaces(desc_parent.text_content())
-        context.log.info("PARSED MANDATE DESCRIPTION: " + description)
-
-        mandate_description_to_membership(person, context, description, startDate, endDate, emitter)
+        parser(person, context, description, description_sub, startDate, endDate, emitter, href)
         if active:
             summary.append(description)
         else:
@@ -254,6 +237,49 @@ def parse_mandates(emitter, context, person, html):
 
     person.add("summary", summary)
     person.add("description", summary.extend(descs))
+
+
+def extract_description(context, row):
+    description_sub_el = row.xpath(".//span[@class='bold']")
+    if len(description_sub_el):
+        # Description has a main part and a sub part.
+        # The main part usually states the name of an organisation and
+        # the sub part the function of the person in that organization.
+        desc_main = description_sub_el[0]
+
+        # sometimes text is wrapped inside <a ... /> that links to organization website
+        desc_parent = desc_main.getparent()
+        href = None
+
+        if desc_parent.tag == "a":
+            href = desc_parent.get("href")
+            desc_parent.remove(desc_main)
+            desc_parent = desc_parent.getparent()
+        else:
+            desc_parent.remove(desc_main)
+
+        desc_sub = collapse_spaces(desc_parent.text_content())
+        description = collapse_spaces(desc_main.text_content())
+        context.log.info("PARSED MANDATE DESCRIPTION: {}, {}".format(description, desc_sub))
+        return description, desc_sub, href
+
+
+def parse_time_span(row):
+    raw_time_span = row.xpath(".//span[@class='aktiv']")
+    active = len(raw_time_span)
+    if not active:
+        raw_time_span = row.xpath(".//span[@class='inaktiv']")
+    return active, raw_time_span
+
+
+def parse_societies(person, context, description, description_sub, startDate, endDate, emitter, org_website):
+    organization = emitter.make("Organization")
+    organization.add("website", org_website)
+    membership = emitter.make("Membership")
+    membership.add("startDate", startDate)
+    membership.add("endDate", endDate)
+    print("++++ SOCIETY ++++")
+    createOrgaAndMemb(emitter, context, organization, person, description, membership, description_sub)
 
 
 def parse(context, data):
@@ -272,7 +298,7 @@ def parse(context, data):
         return
 
     context.log.info("Parsing Person '" + firstName + " " + familyName + "' found at: " + url)
-    birthDate = parse_date(context, get_itemprop(context, html, "birthDate"))
+    birthDate = parse_date(get_itemprop(context, html, "birthDate"))
     birthPlace = get_itemprop(context, html, "birthPlace")
     telephone = get_itemprop(context, html, "http://schema.org/telephone")
     faxNumber = get_itemprop(context, html, "http://schema.org/faxNumber")
@@ -294,8 +320,9 @@ def parse(context, data):
     person.add("email", email)
     person.add("sourceUrl", url)
     person.make_id(url, firstName, familyName, birthDate, birthPlace)
-    # there, all memberships are parsed
-    parse_mandates(emitter, context, person, html)
+
+    parse_info_table(emitter, context, person, html, mandate_description_to_membership, "mandate")
+    parse_info_table(emitter, context, person, html, parse_societies, "vereine")
 
     party = parse_party(context, data, emitter, html)
     if not party:
