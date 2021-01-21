@@ -54,22 +54,23 @@ def _extract_img_src(html):
 
 
 def _extract_birth_date(raw_date):
-    try:
-        if not raw_date:
-            return
+    if not raw_date:
+        return
 
-        arr = collapse_spaces(raw_date).split(" ")
-        # year
-        if len(arr) == 1 and re.match("\d\d\d\d", raw_date):
-            return datetime.strptime(raw_date, "%Y").isoformat()
-        elif len(arr) == 3:
-            if arr[0].endswith("."):  # remove dot
-                arr[0] = arr[0][:len(arr[0]) - 1]
+    arr = collapse_spaces(raw_date).split(" ")
+    # year
+    if len(arr) == 1 and re.match("\d\d\d\d", raw_date):
+        return raw_date
+    elif len(arr) == 3:
+        if arr[0].endswith("."):  # remove dot
+            arr[0] = arr[0][:len(arr[0]) - 1]
+        try:
             day, month, year = int(arr[0]), months[arr[1]], int(arr[2])
-
+            if day is None or month is None:
+                return year
             return datetime(day=day, month=month, year=year).isoformat()
-    except exec:
-        return None
+        except ValueError:
+            return None
 
 
 def _make_party(context, data, emitter, html):
