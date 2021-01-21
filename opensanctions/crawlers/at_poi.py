@@ -5,12 +5,12 @@ from datetime import datetime
 import re
 
 states = ["niederösterreich", "oberösterreich", "burgenland", "tirol", "vorarlberg", "wien", "salzburg", "kärnten",
-            "steiermark"]
+          "steiermark"]
 months = {"Januar": 1, "Februar": 2, "März": 3, "April": 4, "Mai": 5, "Juni": 6, "Juli": 7,
           "August": 8, "September": 9, "Oktober": 10, "November": 11, "Dezember": 12}
 
 
-def parse_social_media(html, person, context):
+def _extract_social_media(html, person, context):
     sm = html.xpath('.//span[contains(@class,"pl-3")]')
     if not len(sm):
         context.log.info("No social media(span with class 'pl-3') found")
@@ -23,7 +23,7 @@ def parse_social_media(html, person, context):
     person.add("website", websites)
 
 
-def parse_personal_websites(context, person, html):
+def _extract_personal_websites(context, person, html):
     websites = html.find(".//div[@class='website']")
     if websites is None:
         context.log.info("No personal website found.")
@@ -35,27 +35,25 @@ def parse_personal_websites(context, person, html):
     person.add("website", urls)
 
 
-def parse_addresses(context, html, person):
+def _extract_addresses(context, html, person):
     addresses = []
 
     for block in html.xpath('.//div[contains(@class,"adressItem")]'):
-        streetAddress = get_itemprop(context, block, "streetAddress")
-        postalCode = get_itemprop(context, block, "postalCode")
-        addressLocality = get_itemprop(context, block, "addressLocality")
+        streetAddress = _get_itemprop(context, block, "streetAddress")
+        postalCode = _get_itemprop(context, block, "postalCode")
+        addressLocality = _get_itemprop(context, block, "addressLocality")
         addresses.append(", ".join([streetAddress, postalCode, addressLocality]))
 
     person.add("address", addresses)
 
 
-def get_img_src(context, html):
+def _extract_img_src(html):
     img_el = html.xpath(".//img[@itemprop='image']")
     if len(img_el):
         return img_el[0].get("src")
-    else:
-        context.log.info("No image found.")
 
 
-def parse_date(raw_date):
+def _extract_birth_date(raw_date):
     try:
         if not raw_date:
             return
@@ -70,15 +68,15 @@ def parse_date(raw_date):
             day, month, year = int(arr[0]), months[arr[1]], int(arr[2])
 
             return datetime(day=day, month=month, year=year).isoformat()
-    except:
+    except exec:
         return None
 
 
-def parse_party(context, data, emitter, html):
-    if data["party"] not in ["...", "parteilos"]:
+def _make_party(context, data, emitter, html):
+    party_name = collapse_spaces(data["party"])
+    if party_name not in ["...", "parteilos"]:
         party = emitter.make("Organization")
-
-        party_name = get_itemprop(context, html, "memberOf")
+        party_name = _get_itemprop(context, html, "memberOf")
         party.add("name", party_name)
         party.add("sourceUrl", "https://meineabgeordneten.at")
         party.add("topics", "pol.party")
@@ -89,7 +87,7 @@ def parse_party(context, data, emitter, html):
         return party
 
 
-def match_date_format(date):
+def _parse_single_date(date):
     match = re.search(r"(\d\d\.\d\d\.\d\d\d\d)", date)
     if match:
         date = match.group(1)
@@ -99,29 +97,38 @@ def match_date_format(date):
         date = match.group(1)
         return datetime.strptime(date, "%Y").isoformat()
     if "?" in date:
-        # meinabgeordneten uses "?" as null-variable
+        # meinabgeordneten.at uses "?" indicating null
         return None
 
 
-def convert_time_span(raw_time_span):
-    raw_time_span = collapse_spaces(raw_time_span)  # TODO
+def _convert_time_span(raw_time_span):
+    raw_time_span = collapse_spaces(raw_time_span)
     if "seit" in raw_time_span.lower():
-        return match_date_format(raw_time_span), None
+        # "seit" (since) indicates that there is no end time
+        return _parse_single_date(raw_time_span), None
     elif "-" in raw_time_span:
         arr = raw_time_span.split("-")
-        return match_date_format(arr[0]), match_date_format(arr[1])
+        return _parse_single_date(arr[0]), _parse_single_date(arr[1])
 
 
-def extract_state_name(description, prefix):
+def _extract_time_span(row):
+    raw_time_span = row.xpath(".//span[@class='aktiv']")
+    active = len(raw_time_span)
+    if not active:
+        raw_time_span = row.xpath(".//span[@class='inaktiv']")
+    return active, raw_time_span
+
+
+def _extract_state_name(description, prefix):
     match = re.search("(" + "|".join(states) + ")", description)
     if not match:
         return
     return prefix + " " + match.group(1).title()
 
 
-def mandate_description_to_membership(person, context, description, description_sub, startDate, endDate, emitter, org_website):
+def make_mandates(person, context, description, description_sub, startDate, endDate, emitter, org_website):
     # Information provided is not very well machine readable, but standardized in natural text.
-    # Due to the rich information, some natural text processing is being done
+    # Due to the valuable information, some basic text processing is being done.
     organization = emitter.make("Organization")
     organization.add("website", org_website)
     organization.add("country", "at")
@@ -135,49 +142,45 @@ def mandate_description_to_membership(person, context, description, description_
             and not "ersatzabgeordneter" in description_lower:
         name = "Nationalrat"
         organization.add("alias", "National Council")
-
-        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
 
     elif re.match(r"bundesminister[in]?\sfür", description_lower):
         name = "Bundesregierung"
         organization.add("alias", ["Government of Austria", "Austrian Federal Government"])
-        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
 
     elif re.match(r"abgeordneter?\szum\s?[^ ]*\slandtag", description_lower) \
             and "ersatzabgeordneter" not in description_lower:
-        name = extract_state_name(description_lower, "Landtag")
+        name = _extract_state_name(description_lower, "Landtag")
         if not name:
             return
-        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
 
     elif "mitglied des bundesrates" in description_lower and \
             "ersatzmitglied" not in description_lower:
         name = "Bundesrat"
         organization.add("alias", "Federal Council")
 
-        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
 
     elif "volksanwalt" in description_lower \
             or "volksanwältin" in description_lower:
         name = "Volksanwaltschaft"
-        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
-
-    elif "ööab" in description_lower:
-        pass
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
 
     elif "landesrat" in description_lower or "landesrätin" in description_lower:
-        name = extract_state_name(description_lower, "Landesregierung")
+        name = _extract_state_name(description_lower, "Landesregierung")
         if not name:
             return
         membership.add("description", description)
         membership.add("summary", "Landesrat")
-        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
 
     elif "bürgermeister" in description_lower:
         pass  # "von hall in tirol"
 
     elif "landeshauptmann" in description_lower:
-        name = extract_state_name(description_lower, "Landesregierung")
+        name = _extract_state_name(description_lower, "Landesregierung")
         if not name:
             return
         organization.add("name", name)
@@ -185,10 +188,10 @@ def mandate_description_to_membership(person, context, description, description_
             membership.add("summary", "Landeshauptmann Stellvertreter")
         else:
             membership.add("summary", "Landeshauptmann")
-        createOrgaAndMemb(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
 
 
-def createOrgaAndMemb(emitter, context, organization, person, org_name, membership, description):
+def _create_org_and_attach(emitter, context, organization, person, org_name, membership, description):
     organization.add("name", org_name)
     organization.make_id("meineabgeordneten.at", org_name)
     pprint(organization.to_dict())
@@ -198,16 +201,21 @@ def createOrgaAndMemb(emitter, context, organization, person, org_name, membersh
     membership.add("organization", organization.id)
     membership.add("description", description)
     membership.make_id(organization.id, person.id)
-    pprint(membership.to_dict())
+    # pprint(membership.to_dict())
 
     context.log.info("CREATED ORGANISATION '" + org_name + "' and membership with id '" + membership.id + "'")
     emitter.emit(membership)
 
 
-def parse_info_table(emitter, context, person, html, parser, div_id):
+def _parse_info_table(emitter, context, person, html, entity_maker, div_id):
+    """ There are various "tables" that do contain information about mandates, societies or past jobs. This is the
+    generic function that parses this information and calls a specific function that does the entity mapping. """
+
     summary = []
     descs = []
 
+    # If field is "firmenfunktion" there is a special case (parse sub-companies)
+    isWork = div_id == "firmenfunktionen"
     mandate_div = html.find(".//div[@id='{}']".format(div_id))
     if mandate_div is None:
         context.log.warning("No 'mandate' field found")
@@ -215,21 +223,28 @@ def parse_info_table(emitter, context, person, html, parser, div_id):
 
     # complex match due to duplicated fields in DOM (displayed according to window size)
     for row in mandate_div.xpath(".//div[contains(@class,'funktionszeile') and contains(@class,'d-lg-none')]"):
-        active, raw_time_span = parse_time_span(row)
+        active, raw_time_span = _extract_time_span(row)
 
         if not len(raw_time_span):
             # this should not happen -> go to next iteration
             context.log.error("Did not find time span in mandates field")
             continue
 
-        startDate, endDate = convert_time_span(raw_time_span[0].text) or (None, None)
-        context.log.info("PARSED TIMESPAN: from " + (startDate or "none") + " to " + (endDate or "none"))
+        startDate, endDate = _convert_time_span(raw_time_span[0].text) or (None, None)
+        # context.log.info("PARSED TIMESPAN: from " + (startDate or "none") + " to " + (endDate or "none"))
 
-        description, description_sub, href = extract_description(context, row) or (None, None)
+        description, description_sub, href, affiliated = _extract_table_description(context, row, isWork) or (
+            None, None, None, None)
         if not description:
             continue
 
-        parser(person, context, description, description_sub, startDate, endDate, emitter, href)
+        if isWork:
+            # special entity maker
+            entity_maker(person, context, description, description_sub, startDate, endDate, emitter, href, affiliated)
+        else:
+            # generic entity maker
+            entity_maker(person, context, description, description_sub, startDate, endDate, emitter, href)
+
         if active:
             summary.append(description)
         else:
@@ -239,8 +254,10 @@ def parse_info_table(emitter, context, person, html, parser, div_id):
     person.add("description", summary.extend(descs))
 
 
-def extract_description(context, row):
+def _extract_table_description(context, row, isWork):
     description_sub_el = row.xpath(".//span[@class='bold']")
+    affiliated = None
+
     if len(description_sub_el):
         # Description has a main part and a sub part.
         # The main part usually states the name of an organisation and
@@ -258,28 +275,95 @@ def extract_description(context, row):
         else:
             desc_parent.remove(desc_main)
 
+        if isWork:
+            aff_div = desc_parent.xpath('.//div[contains(@class,"tochterfirmen")]')
+            if len(aff_div):
+                affiliated = aff_div[0]
+                desc_parent.remove(affiliated)
+
         desc_sub = collapse_spaces(desc_parent.text_content())
         description = collapse_spaces(desc_main.text_content())
         context.log.info("PARSED MANDATE DESCRIPTION: {}, {}".format(description, desc_sub))
-        return description, desc_sub, href
+        return description, desc_sub, href, affiliated
 
 
-def parse_time_span(row):
-    raw_time_span = row.xpath(".//span[@class='aktiv']")
-    active = len(raw_time_span)
-    if not active:
-        raw_time_span = row.xpath(".//span[@class='inaktiv']")
-    return active, raw_time_span
-
-
-def parse_societies(person, context, description, description_sub, startDate, endDate, emitter, org_website):
+def _make_societies(person, context, description, description_sub, startDate, endDate, emitter, org_website):
     organization = emitter.make("Organization")
     organization.add("website", org_website)
     membership = emitter.make("Membership")
     membership.add("startDate", startDate)
     membership.add("endDate", endDate)
     print("++++ SOCIETY ++++")
-    createOrgaAndMemb(emitter, context, organization, person, description, membership, description_sub)
+    _create_org_and_attach(emitter, context, organization, person, description, membership, description_sub)
+
+
+def _make_work_and_affiliates(person, context, description, description_sub, startDate, endDate, emitter, org_website,
+                              affiliates):
+    company_owner = emitter.make("Company")
+    company_owner.add("website", org_website)
+    membership = emitter.make("Membership")
+    membership.add("startDate", startDate)
+    membership.add("endDate", endDate)
+
+    _create_org_and_attach(emitter, context, company_owner, person, description, membership, description_sub)
+
+    if affiliates is None:
+        return
+
+    for aff in affiliates.xpath('.//div[contains(@class,"tochterfirma")]'):
+        aff_name_span = aff.xpath(".//span[@class='tochterFirmaName']")
+        aff_url_span = aff.xpath('.//span[@class="tochterFirmaLink"]')
+        aff_rel_span = aff.xpath('.//span[@class="tochterFirmaBeziehung"]')
+
+        aff_name = collapse_spaces(aff_name_span[0].text) if len(aff_name_span) else None
+
+        if not aff_name:
+            # An affiliated company without a name indicates a parsing error
+            continue
+
+        _create_affiliated_company(aff_name, aff_rel_span, aff_url_span, company_owner, context, emitter)
+
+
+def _create_affiliated_company(aff_name, aff_rel_span, aff_url_span, company_owner, context, emitter):
+    aff_href = aff_url_span[0].find(".//a") if len(aff_url_span) else None
+    aff_href = aff_href.get("href") if aff_href is not None else None
+    aff_rel = aff_rel_span[0].text if len(aff_rel_span) else None
+
+    company = emitter.make("Company")
+    company.add("name", aff_name)
+    company.add("website", aff_href)
+    company.make_id("meineabgeordneten.at", aff_name)
+    company_ownership = emitter.make("Ownership")
+    if aff_rel:
+        # info is given that way: GESELLSCHAFTER 50.00% (100.00...)
+        match_percentage = re.search(r"(\d\d?\d?\.\d\d)", aff_rel)
+        aff_pct = match_percentage.group(1) if match_percentage else None
+        if aff_pct:
+            aff_type = collapse_spaces(aff_rel[:match_percentage.start()])
+        else:
+            aff_type = collapse_spaces(aff_rel)
+
+        print("AFFILIATE pct '{}' ownerType '{}'".format(aff_pct, aff_type))
+        company_ownership.add("percentage", aff_pct)
+        company_ownership.add("ownershipType", aff_type)
+
+    company_ownership.add("owner", company_owner.id)
+    company_ownership.add("asset", company.id)
+    company_ownership.make_id(company_owner.id, company.id)
+    emitter.emit(company)
+    emitter.emit(company_ownership)
+    context.log.info("CREATED COMPANY '" + aff_name + "' and membership with id '" + company_ownership.id + "'")
+    # pprint(company.to_dict())
+    # pprint(company_ownership.to_dict())
+
+
+def _get_itemprop(context, html, prop, el="span"):
+    # Basic metadata is stored in microdata tag.
+    title = html.xpath(".//" + el + "[@itemprop='" + prop + "']")
+    if len(title):
+        return collapse_spaces(title[0].text)
+    else:
+        context.log.info("Property <span itemprop='" + prop + "'/> not found.")
 
 
 def parse(context, data):
@@ -290,21 +374,21 @@ def parse(context, data):
 
     person = emitter.make("Person")
 
-    title = get_itemprop(context, html, 'http://schema.org/honorificPrefix')
-    firstName = get_itemprop(context, html, "http://schema.org/givenName")
-    familyName = get_itemprop(context, html, "http://schema.org/familyName")
+    title = _get_itemprop(context, html, 'http://schema.org/honorificPrefix')
+    firstName = _get_itemprop(context, html, "http://schema.org/givenName")
+    familyName = _get_itemprop(context, html, "http://schema.org/familyName")
 
     if not firstName or not familyName:
         return
 
     context.log.info("Parsing Person '" + firstName + " " + familyName + "' found at: " + url)
-    birthDate = parse_date(get_itemprop(context, html, "birthDate"))
-    birthPlace = get_itemprop(context, html, "birthPlace")
-    telephone = get_itemprop(context, html, "http://schema.org/telephone")
-    faxNumber = get_itemprop(context, html, "http://schema.org/faxNumber")
-    image = get_img_src(context, html)
-    email = get_itemprop(context, html, "http://schema.org/email", "*")
-    parse_personal_websites(context, person, html)
+    birthDate = _extract_birth_date(_get_itemprop(context, html, "birthDate"))
+    birthPlace = _get_itemprop(context, html, "birthPlace")
+    telephone = _get_itemprop(context, html, "http://schema.org/telephone")
+    faxNumber = _get_itemprop(context, html, "http://schema.org/faxNumber")
+    image = _extract_img_src(html)
+    email = _get_itemprop(context, html, "http://schema.org/email", "*")
+    _extract_personal_websites(context, person, html)
 
     person.add("title", title)
     person.add("firstName", firstName)
@@ -314,40 +398,35 @@ def parse(context, data):
     person.add("birthPlace", birthPlace)
     person.add("country", "at")
 
-    parse_social_media(html, person, context)
-    parse_addresses(context, html, person)
+    _extract_social_media(html, person, context)
+    _extract_addresses(context, html, person)
     person.add("phone", telephone)
     person.add("email", email)
     person.add("sourceUrl", url)
     person.make_id(url, firstName, familyName, birthDate, birthPlace)
 
-    parse_info_table(emitter, context, person, html, mandate_description_to_membership, "mandate")
-    parse_info_table(emitter, context, person, html, parse_societies, "vereine")
+    _parse_info_table(emitter, context, person, html, make_mandates, "mandate")
+    _parse_info_table(emitter, context, person, html, _make_societies, "vereine")
+    _parse_info_table(emitter, context, person, html, _make_work_and_affiliates, "firmenfunktionen")
 
-    party = parse_party(context, data, emitter, html)
+    party = _make_party(context, data, emitter, html)
+    emitter.emit(person)
+
     if not party:
+        emitter.finalize()
         return
-    pprint(party.to_dict())
+
+    # pprint(party.to_dict())
     emitter.emit(party)
 
     membership = emitter.make("Membership")
     membership.make_id(person.id, party.id)
-    membership.add("member", person)
-    membership.add("organization", party)
+    membership.add("member", person.id)
+    membership.add("organization", party.id)
     membership.add("sourceUrl", url)
     emitter.emit(membership)
-    pprint(person.to_dict())
-    emitter.emit(person)
+    # pprint(person.to_dict())
     emitter.finalize()
-
-
-def get_itemprop(context, html, prop, el="span"):
-    # Basic metadata is stored in microdata tag.
-    title = html.xpath(".//" + el + "[@itemprop='" + prop + "']")
-    if len(title):
-        return collapse_spaces(title[0].text)
-    else:
-        context.log.info("Property <span itemprop='" + prop + "'/> not found.")
 
 
 def index(context, data):

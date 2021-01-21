@@ -14,8 +14,6 @@ pipeline:
       pass: index
   index:
     method: opensanctions.crawlers.at_poi:index
-    params:
-      sampling_rate: 0.01
     handle:
       pass: fetch_representative
   fetch_representative:
