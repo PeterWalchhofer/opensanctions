@@ -61,7 +61,7 @@ def _extract_birth_date(raw_date):
         arr = collapse_spaces(raw_date).split(" ")
         # year
         if len(arr) == 1 and re.match("\d\d\d\d", raw_date):
-            return datetime.strptime("%Y", raw_date).isoformat()
+            return datetime.strptime(raw_date, "%Y").isoformat()
         elif len(arr) == 3:
             if arr[0].endswith("."):  # remove dot
                 arr[0] = arr[0][:len(arr[0]) - 1]
