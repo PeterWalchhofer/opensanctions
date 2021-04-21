@@ -1,6 +1,6 @@
 name: ua_sdfm_blacklist
 description: "[OSANC] Ukraine State Finance Monitoring Service"
-schedule: daily
+schedule: never
 pipeline:
   init:
     method: seed

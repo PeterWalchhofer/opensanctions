@@ -1,6 +1,6 @@
 name: eu_meps
 description: "[OSANC] Members of the European Parliament"
-schedule: daily
+schedule: never
 pipeline:
   init:
     method: seed

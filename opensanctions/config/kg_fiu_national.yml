@@ -1,6 +1,6 @@
 name: kg_fiu_national
 description: "[OSANC] Kyrgyz FIU National List"
-schedule: weekly
+schedule: never
 pipeline:
   init:
     method: seed

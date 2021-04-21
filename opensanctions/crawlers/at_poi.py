@@ -139,35 +139,36 @@ def make_mandates(person, context, description, description_sub, startDate, endD
     description = " ".join([description, description_sub])  # separation not needed here
     description_lower = description.lower()
 
+    # Don't judge me.
     if re.match(r"abgeordneter? zum nationalrat", description_lower) \
             and not "ersatzabgeordneter" in description_lower:
         name = "Nationalrat"
         organization.add("alias", "National Council")
-        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description, startDate)
 
     elif re.match(r"bundesminister[in]?\sfür", description_lower):
         name = "Bundesregierung"
         organization.add("alias", ["Government of Austria", "Austrian Federal Government"])
-        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description, startDate)
 
     elif re.match(r"abgeordneter?\szum\s?[^ ]*\slandtag", description_lower) \
             and "ersatzabgeordneter" not in description_lower:
         name = _extract_state_name(description_lower, "Landtag")
         if not name:
             return
-        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description, startDate)
 
     elif "mitglied des bundesrates" in description_lower and \
             "ersatzmitglied" not in description_lower:
         name = "Bundesrat"
         organization.add("alias", "Federal Council")
 
-        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description, startDate)
 
     elif "volksanwalt" in description_lower \
             or "volksanwältin" in description_lower:
         name = "Volksanwaltschaft"
-        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description, startDate)
 
     elif "landesrat" in description_lower or "landesrätin" in description_lower:
         name = _extract_state_name(description_lower, "Landesregierung")
@@ -175,7 +176,7 @@ def make_mandates(person, context, description, description_sub, startDate, endD
             return
         membership.add("description", description)
         membership.add("summary", "Landesrat")
-        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description, startDate)
 
     elif "bürgermeister" in description_lower:
         pass  # "von hall in tirol"
@@ -189,10 +190,10 @@ def make_mandates(person, context, description, description_sub, startDate, endD
             membership.add("summary", "Landeshauptmann Stellvertreter")
         else:
             membership.add("summary", "Landeshauptmann")
-        _create_org_and_attach(emitter, context, organization, person, name, membership, description)
+        _create_org_and_attach(emitter, context, organization, person, name, membership, description, startDate)
 
 
-def _create_org_and_attach(emitter, context, organization, person, org_name, membership, description):
+def _create_org_and_attach(emitter, context, organization, person, org_name, membership, description, startDate):
     organization.add("name", org_name)
     organization.make_id("meineabgeordneten.at", org_name)
     pprint(organization.to_dict())
@@ -201,7 +202,7 @@ def _create_org_and_attach(emitter, context, organization, person, org_name, mem
     membership.add("member", person.id)
     membership.add("organization", organization.id)
     membership.add("description", description)
-    membership.make_id(organization.id, person.id)
+    membership.make_id(organization.id, person.id, startDate)
     # pprint(membership.to_dict())
 
     context.log.info("CREATED ORGANISATION '" + org_name + "' and membership with id '" + membership.id + "'")
@@ -295,7 +296,7 @@ def _make_societies(person, context, description, description_sub, startDate, en
     membership.add("startDate", startDate)
     membership.add("endDate", endDate)
     print("++++ SOCIETY ++++")
-    _create_org_and_attach(emitter, context, organization, person, description, membership, description_sub)
+    _create_org_and_attach(emitter, context, organization, person, description, membership, description_sub, startDate)
 
 
 def _make_work_and_affiliates(person, context, description, description_sub, startDate, endDate, emitter, org_website,
@@ -306,7 +307,7 @@ def _make_work_and_affiliates(person, context, description, description_sub, sta
     membership.add("startDate", startDate)
     membership.add("endDate", endDate)
 
-    _create_org_and_attach(emitter, context, company_owner, person, description, membership, description_sub)
+    _create_org_and_attach(emitter, context, company_owner, person, description, membership, description_sub, startDate)
 
     if affiliates is None:
         return
@@ -336,7 +337,7 @@ def _create_affiliated_company(aff_name, aff_rel_span, aff_url_span, company_own
     company.make_id("meineabgeordneten.at", aff_name)
     company_ownership = emitter.make("Ownership")
     if aff_rel:
-        # info is given that way: GESELLSCHAFTER 50.00% (100.00...)
+        # info is given that way: "GESELLSCHAFTER 50.00% (100.00...)"
         match_percentage = re.search(r"(\d\d?\d?\.\d\d)", aff_rel)
         aff_pct = match_percentage.group(1) if match_percentage else None
         if aff_pct:
@@ -404,7 +405,7 @@ def parse(context, data):
     person.add("phone", telephone)
     person.add("email", email)
     person.add("sourceUrl", url)
-    person.make_id(url, firstName, familyName, birthDate, birthPlace)
+    person.make_id(url)
 
     _parse_info_table(emitter, context, person, html, make_mandates, "mandate")
     _parse_info_table(emitter, context, person, html, _make_societies, "vereine")

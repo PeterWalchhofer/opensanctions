@@ -1,6 +1,6 @@
 name: us_ofac
 description: "[OSANC] US OFAC SDN, non-SDN"
-schedule: daily
+schedule: never
 pipeline:
   init:
     method: seed

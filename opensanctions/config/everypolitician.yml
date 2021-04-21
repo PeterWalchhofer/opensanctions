@@ -1,6 +1,6 @@
 name: everypolitician
 description: "[OSANC] EveryPolitician.org"
-schedule: weekly
+schedule: never
 pipeline:
   init:
     method: seed

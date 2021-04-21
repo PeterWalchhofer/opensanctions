@@ -1,6 +1,6 @@
 name: gb_coh_disqualified
 description: "[OSANC] Disqualified company directors from the UK (Companies House)"
-schedule: weekly
+schedule: never
 pipeline:
   init:
     method: seed

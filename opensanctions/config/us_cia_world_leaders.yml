@@ -1,6 +1,6 @@
 name: us_cia_world_leaders
 description: "[OSANC] CIA World Leaders"
-schedule: daily
+schedule: never
 pipeline:
   init:
     method: seed

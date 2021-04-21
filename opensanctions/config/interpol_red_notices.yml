@@ -1,6 +1,6 @@
 name: interpol_red_notices
 description: "[OSANC] Interpol Red Notices"
-schedule: daily
+schedule: never
 pipeline:
   init:
     method: seed

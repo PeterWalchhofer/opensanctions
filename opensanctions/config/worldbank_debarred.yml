@@ -1,6 +1,6 @@
 name: worldbank_debarred
 description: "[OSANC] Worldbank List of Debarred Providers"
-schedule: weekly
+schedule: never
 pipeline:
   init:
     method: opensanctions.crawlers.worldbank_debarred:fetch
