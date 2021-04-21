@@ -13,10 +13,10 @@ setup(
     package_data={"opensanctions": ["config/*.yml"]},
     zip_safe=False,
     install_requires=[
-        "followthemoney >= 1.21.2",
-        "followthemoney-store[postgresql] >= 2.1.6",
-        "memorious >= 1.8.3",
-        "alephclient >= 2.1.3",
+        "followthemoney == 1.31.1",
+        "followthemoney-store[postgresql] == 2.1.6",
+        "memorious == 1.8.3",
+        "alephclient == 2.1.3",
         "xlrd",
     ],
     entry_points={
