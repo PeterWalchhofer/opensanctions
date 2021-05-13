@@ -39,9 +39,9 @@ def _extract_addresses(context, html, person):
     addresses = []
 
     for block in html.xpath('.//div[contains(@class,"adressItem")]'):
-        streetAddress = _get_itemprop(context, block, "streetAddress")
-        postalCode = _get_itemprop(context, block, "postalCode")
-        addressLocality = _get_itemprop(context, block, "addressLocality")
+        streetAddress = _get_itemprop(block, "streetAddress")
+        postalCode = _get_itemprop(block, "postalCode")
+        addressLocality = _get_itemprop(block, "addressLocality")
         addresses.append(", ".join([streetAddress, postalCode, addressLocality]))
 
     person.add("address", addresses)
@@ -77,7 +77,7 @@ def _make_party(context, data, emitter, html):
     party_name = collapse_spaces(data["party"])
     if party_name not in ["...", "parteilos"]:
         party = emitter.make("Organization")
-        party_name = _get_itemprop(context, html, "memberOf")
+        party_name = _get_itemprop(html, "memberOf")
         party.add("name", party_name)
         party.add("sourceUrl", "https://meineabgeordneten.at")
         party.add("topics", "pol.party")
@@ -98,7 +98,7 @@ def _parse_single_date(date):
         date = match.group(1)
         return datetime.strptime(date, "%Y").isoformat()
     if "?" in date:
-        # meinabgeordneten.at uses "?" indicating null
+        # meinabgeordneten.at uses "?" indicating null.
         return None
 
 
@@ -139,7 +139,7 @@ def make_mandates(person, context, description, description_sub, startDate, endD
     description = " ".join([description, description_sub])  # separation not needed here
     description_lower = description.lower()
 
-    # Don't judge me.
+   # This is not beautiful, but I saw no other way.
     if re.match(r"abgeordneter? zum nationalrat", description_lower) \
             and not "ersatzabgeordneter" in description_lower:
         name = "Nationalrat"
@@ -196,14 +196,12 @@ def make_mandates(person, context, description, description_sub, startDate, endD
 def _create_org_and_attach(emitter, context, organization, person, org_name, membership, description, startDate):
     organization.add("name", org_name)
     organization.make_id("meineabgeordneten.at", org_name)
-    pprint(organization.to_dict())
     emitter.emit(organization)
 
     membership.add("member", person.id)
     membership.add("organization", organization.id)
     membership.add("description", description)
     membership.make_id(organization.id, person.id, startDate)
-    # pprint(membership.to_dict())
 
     context.log.info("CREATED ORGANISATION '" + org_name + "' and membership with id '" + membership.id + "'")
     emitter.emit(membership)
@@ -233,7 +231,6 @@ def _parse_info_table(emitter, context, person, html, entity_maker, div_id):
             continue
 
         startDate, endDate = _convert_time_span(raw_time_span[0].text) or (None, None)
-        # context.log.info("PARSED TIMESPAN: from " + (startDate or "none") + " to " + (endDate or "none"))
 
         description, description_sub, href, affiliated = _extract_table_description(context, row, isWork) or (
             None, None, None, None)
@@ -320,7 +317,7 @@ def _make_work_and_affiliates(person, context, description, description_sub, sta
         aff_name = collapse_spaces(aff_name_span[0].text) if len(aff_name_span) else None
 
         if not aff_name:
-            # An affiliated company without a name indicates a parsing error
+            # An affiliated company without a name indicates a parsing error.
             continue
 
         _create_affiliated_company(aff_name, aff_rel_span, aff_url_span, company_owner, context, emitter)
@@ -337,7 +334,7 @@ def _create_affiliated_company(aff_name, aff_rel_span, aff_url_span, company_own
     company.make_id("meineabgeordneten.at", aff_name)
     company_ownership = emitter.make("Ownership")
     if aff_rel:
-        # info is given that way: "GESELLSCHAFTER 50.00% (100.00...)"
+        # Info is given that way: "GESELLSCHAFTER 50.00% (100.00...)"
         match_percentage = re.search(r"(\d\d?\d?\.\d\d)", aff_rel)
         aff_pct = match_percentage.group(1) if match_percentage else None
         if aff_pct:
@@ -355,17 +352,14 @@ def _create_affiliated_company(aff_name, aff_rel_span, aff_url_span, company_own
     emitter.emit(company)
     emitter.emit(company_ownership)
     context.log.info("CREATED COMPANY '" + aff_name + "' and membership with id '" + company_ownership.id + "'")
-    # pprint(company.to_dict())
-    # pprint(company_ownership.to_dict())
 
 
-def _get_itemprop(context, html, prop, el="span"):
+
+def _get_itemprop(html, prop, el="span"):
     # Basic metadata is stored in microdata tag.
-    title = html.xpath(".//" + el + "[@itemprop='" + prop + "']")
-    if len(title):
-        return collapse_spaces(title[0].text)
-    else:
-        context.log.info("Property <span itemprop='" + prop + "'/> not found.")
+    props = html.xpath(".//" + el + "[@itemprop='" + prop + "']")
+    return [collapse_spaces(prop.text) for prop in props]
+
 
 
 def parse(context, data):
@@ -376,20 +370,20 @@ def parse(context, data):
 
     person = emitter.make("Person")
 
-    title = _get_itemprop(context, html, 'http://schema.org/honorificPrefix')
-    firstName = _get_itemprop(context, html, "http://schema.org/givenName")
-    familyName = _get_itemprop(context, html, "http://schema.org/familyName")
+    title = _get_itemprop(html, 'http://schema.org/honorificPrefix')
+    firstName = _get_itemprop(html, "http://schema.org/givenName")
+    familyName = _get_itemprop(html, "http://schema.org/familyName")
 
     if not firstName or not familyName:
         return
 
     context.log.info("Parsing Person '" + firstName + " " + familyName + "' found at: " + url)
-    birthDate = _extract_birth_date(_get_itemprop(context, html, "birthDate"))
-    birthPlace = _get_itemprop(context, html, "birthPlace")
-    telephone = _get_itemprop(context, html, "http://schema.org/telephone")
-    faxNumber = _get_itemprop(context, html, "http://schema.org/faxNumber")
+    birthDate = _extract_birth_date(_get_itemprop(html, "birthDate"))
+    birthPlace = _get_itemprop(html, "birthPlace")
+    telephone = _get_itemprop(html, "http://schema.org/telephone")
+    faxNumber = _get_itemprop(html, "http://schema.org/faxNumber")
     image = _extract_img_src(html)
-    email = _get_itemprop(context, html, "http://schema.org/email", "*")
+    email = _get_itemprop(html, "http://schema.org/email", "*")
     _extract_personal_websites(context, person, html)
 
     person.add("title", title)
@@ -418,7 +412,6 @@ def parse(context, data):
         emitter.finalize()
         return
 
-    # pprint(party.to_dict())
     emitter.emit(party)
 
     membership = emitter.make("Membership")
@@ -427,7 +420,6 @@ def parse(context, data):
     membership.add("organization", party.id)
     membership.add("sourceUrl", url)
     emitter.emit(membership)
-    # pprint(person.to_dict())
     emitter.finalize()
 
 
