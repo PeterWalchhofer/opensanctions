@@ -227,7 +227,6 @@ def _parse_info_table(emitter, context, person, html, entity_maker, div_id):
 
         if not len(raw_time_span):
             # this should not happen -> go to next iteration
-            context.log.error("Did not find time span in mandates field")
             continue
 
         startDate, endDate = _convert_time_span(raw_time_span[0].text) or (None, None)
@@ -357,8 +356,10 @@ def _create_affiliated_company(aff_name, aff_rel_span, aff_url_span, company_own
 
 def _get_itemprop(html, prop, el="span"):
     # Basic metadata is stored in microdata tag.
-    props = html.xpath(".//" + el + "[@itemprop='" + prop + "']")
-    return [collapse_spaces(prop.text) for prop in props]
+    prop = html.xpath(".//" + el + "[@itemprop='" + prop + "']")
+    if len(prop):
+        return collapse_spaces(prop[0].text)
+
 
 
 
