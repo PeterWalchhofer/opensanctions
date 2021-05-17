@@ -1,18 +1,11 @@
-# OpenSanctions.org
+# Fork
+This is a fork from [OpenSanctions](https://github.com/pudo/opensanctions) as the project has been refactored, which would break the scraper that can be found at `opensanctions/crawlers/at_poi.py`.
+To run the crawler, follow the instructions below. The UI unfortunately does not work, but the framework can be run headlessly. The scraper should start automatically when running docker-compose.
 
-This repository contains the home page for OpenSanctions.org, an open-source
-repository of sanctions data, politically exposed persons, and other entities
-of interest.
+# OpenSanctions
 
 The scrapers are executed using [memorious](https://github.com/alephdata/memorious),
 a scraping framework.
-
-OpenSanctions.org is generated using Jekyll, and hosted on GitHub pages. Please
-feel free to submit pull requests for any suggested improvements.
-
-## Data sources
-
-We collect data sources for this project [here](https://docs.google.com/spreadsheets/d/1ozEF7aTRM5mOK7PfusKnlGnfoYdee5AygdKbMTHkRQE/edit#gid=0). Please feel free to contribute and to add possible sources or scrapers.
 
 ## Running
 
@@ -26,14 +19,12 @@ We collect data sources for this project [here](https://docs.google.com/spreadsh
 
 3. Run a crawler:
 
-        memorious run un_sc_sanctions
+        memorious run at_poi
 
 4. Export to CSVs:
 
-        ftm store iterate -d un_sc_sanctions | ftm export-csv
+        ftm store iterate -d at_poi | ftm export-csv
 
-
-The Memorious should be available at localhost:8000. pgweb interface for the database should be available at localhost:9633.
 
 ## Pushing data into Aleph
 
@@ -45,6 +36,6 @@ You can also push crawled entities to Aleph manually.
 
        docker-compose exec worker sh
 
-2. Iterate over scraped entities and send them to Aleph
+2. Iterate over scraped entities
 
-       ftm store iterate -d un_sc_sanctions | alephclient write-entities -f un_sc_sanctions
+       ftm store iterate -d at_poi | alephclient write-entities -f at_poi
